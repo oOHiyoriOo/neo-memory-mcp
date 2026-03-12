@@ -1,11 +1,12 @@
 services:
   neo4j:
-    image: neo4j:5
+    image: neo4j:latest
+    container_name: neo-memory
     ports:
       - "7474:7474"   # browser
       - "7687:7687"   # bolt
     environment:
-      NEO4J_AUTH: neo4j/password
+      NEO4J_AUTH: neo4j/0oK2mQb0pySP59D409OQdkShZZ7cyAI4
     volumes:
       - neo4j_data:/data
 
