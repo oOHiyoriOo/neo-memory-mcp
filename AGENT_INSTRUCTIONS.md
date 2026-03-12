@@ -21,6 +21,9 @@ After storing two related memories, call `connect` to link them — e.g. an `iss
 ### When to explore
 When context around a memory feels incomplete, call `explore` to traverse its connections. A single node often unlocks a cluster of related decisions, issues, and solutions.
 
+### When to forget
+If the user tells you a memory is wrong, outdated, or should be removed: `recall` it first to get its ID, then call `forget` to permanently delete it and all its relationships. Always confirm with the user before deleting.
+
 ### Scope
 Always set `scope` to the current repository or project name (e.g. `neo-memory-mcp`) for project-specific memories. Use `scope: global` for preferences and patterns that apply everywhere.
 
