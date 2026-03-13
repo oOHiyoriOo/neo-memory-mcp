@@ -1,16 +1,18 @@
 # neo-memory-mcp
 
-Simple Neo4j-backed memory MCP for coding agents (GitHub Copilot CLI, Claude CLI, etc).
+Simple KuzuDB-backed memory MCP for coding agents (GitHub Copilot CLI, Claude CLI, etc).
 
-No cloud. No markdown files. No over-engineering.  
-Just Neo4j + local ONNX embeddings + 5 tools.
+No cloud. No markdown files. No external server. No over-engineering.  
+Just KuzuDB (embedded) + local ONNX embeddings + 5 tools.
 
 ---
 
 ## How it works
 
 Memories are graph nodes. Relationships between them are first-class citizens.  
-Semantic recall uses a local embedding model (`BAAI/bge-small-en-v1.5`, ~33 MB, downloaded once and cached) — no external embedding service required.
+Semantic recall uses a local embedding model (`BAAI/bge-small-en-v1.5`, ~33 MB, downloaded once and cached to `~/.cache/fastembed`) — no external embedding service required.
+
+The database is an embedded [KuzuDB](https://github.com/kuzudb/kuzu) graph stored in `~/.local/share/neo-memory/db` by default. No server to run, no credentials to manage.
 
 ```
 (:Memory { id, content, type, scope, tags, created_at, embedding })
@@ -25,10 +27,8 @@ Semantic recall uses a local embedding model (`BAAI/bge-small-en-v1.5`, ~33 MB, 
 ## Requirements
 
 - **Node.js** 18+
-- **Neo4j** 5.x — [Desktop](https://neo4j.com/download/) or Docker:
-  ```bash
-  docker run -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/password neo4j:5
-  ```
+
+That's it. No database server required.
 
 ---
 
@@ -44,33 +44,39 @@ No `.env` file needed. Credentials are passed directly by the MCP client config 
 
 ### Environment variables
 
-| Variable          | Default                  | Description            |
-|-------------------|--------------------------|------------------------|
-| `NEO4J_URI`       | `bolt://localhost:7687`  | Neo4j Bolt URI         |
-| `NEO4J_USER`      | `neo4j`                  | Neo4j username         |
-| `NEO4J_PASSWORD`  | `password`               | Neo4j password         |
+| Variable        | Default                               | Description                       |
+|-----------------|---------------------------------------|-----------------------------------|
+| `KUZU_DB_PATH`  | `~/.local/share/neo-memory/db`        | Path to the KuzuDB database dir   |
 
-> **Local dev / testing:** pass them inline — `NEO4J_PASSWORD=secret npm run dev`
+> **Override example:** `KUZU_DB_PATH=/data/my-memory npm run dev`
 
 ---
 
 ## Wiring into your agent
 
-Credentials are injected via the `env` block — that's the only config you need.
+No credentials needed — just point at the script.
 
 ### Claude Desktop (`claude_desktop_config.json`)
 
+**Linux / macOS**
 ```json
 {
   "mcpServers": {
     "neo-memory": {
       "command": "npx",
-      "args": ["tsx", "/path/to/neo-memory-mcp/src/index.ts"],
-      "env": {
-        "NEO4J_URI": "bolt://localhost:7687",
-        "NEO4J_USER": "neo4j",
-        "NEO4J_PASSWORD": "password"
-      }
+      "args": ["tsx", "/path/to/neo-memory-mcp/src/index.ts"]
+    }
+  }
+}
+```
+
+**Windows** — `npx` must be the full path (cmd/PowerShell don't resolve it otherwise):
+```json
+{
+  "mcpServers": {
+    "neo-memory": {
+      "command": "C:\\Program Files\\nodejs\\npx.cmd",
+      "args": ["tsx", "C:\\path\\to\\neo-memory-mcp\\src\\index.ts"]
     }
   }
 }
@@ -78,22 +84,33 @@ Credentials are injected via the `env` block — that's the only config you need
 
 ### GitHub Copilot CLI (`.vscode/mcp.json`)
 
+**Linux / macOS**
 ```json
 {
   "servers": {
     "neo-memory": {
       "type": "stdio",
       "command": "npx",
-      "args": ["tsx", "/path/to/neo-memory-mcp/src/index.ts"],
-      "env": {
-        "NEO4J_URI": "bolt://localhost:7687",
-        "NEO4J_USER": "neo4j",
-        "NEO4J_PASSWORD": "password"
-      }
+      "args": ["tsx", "/path/to/neo-memory-mcp/src/index.ts"]
     }
   }
 }
 ```
+
+**Windows**
+```json
+{
+  "servers": {
+    "neo-memory": {
+      "type": "stdio",
+      "command": "C:\\Program Files\\nodejs\\npx.cmd",
+      "args": ["tsx", "C:\\path\\to\\neo-memory-mcp\\src\\index.ts"]
+    }
+  }
+}
+```
+
+> **Tip:** find your npx path on Windows with `where npx` in a terminal.
 
 ### Agent instructions
 

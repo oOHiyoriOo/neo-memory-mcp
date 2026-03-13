@@ -1,8 +1,13 @@
+import os from "os";
+import path from "path";
+
 /** Central config — read once from environment. */
 export const config = {
-  neo4j: {
-    uri:      process.env.NEO4J_URI      ?? "bolt://localhost:7687",
-    user:     process.env.NEO4J_USER     ?? "neo4j",
-    password: process.env.NEO4J_PASSWORD ?? "password",
+  kuzu: {
+    /**
+     * Path to the KuzuDB database directory.
+     * Defaults to ~/.local/share/neo-memory/db — shared across all projects.
+     */
+    dbPath: process.env.KUZU_DB_PATH ?? path.join(os.homedir(), ".local", "share", "neo-memory", "db"),
   },
 } as const;

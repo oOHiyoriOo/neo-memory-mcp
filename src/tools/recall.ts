@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { driver } from "../db.js";
+import { runQuery } from "../db.js";
 import { embed } from "../embedder.js";
 
 export function registerRecall(server: McpServer): void {
@@ -26,55 +26,51 @@ export function registerRecall(server: McpServer): void {
         .describe("Maximum number of memories to return."),
     },
     async ({ query, scope, limit }) => {
-      const session = driver.session();
-      try {
-        const queryEmbedding = await embed(query);
-        let records;
+      const queryEmbedding = await embed(query);
+      // KuzuDB requires a WITH clause between YIELD and WHERE — direct WHERE after YIELD is not supported
+      const scopeFilter = scope ? "WITH node, distance WHERE node.scope = $scope OR node.scope = 'global'" : "";
+      const scopeFilterFts = scope ? "WITH node, score WHERE node.scope = $scope OR node.scope = 'global'" : "";
+      let rows: Record<string, any>[];
 
-        if (queryEmbedding) {
-          // Vector similarity — primary path
-          const scopeFilter = scope ? "WHERE m.scope = $scope OR m.scope = 'global'" : "";
-          const result = await session.run(
-            `CALL db.index.vector.queryNodes('memory_vector', $limit, $embedding)
-             YIELD node AS m, score
-             ${scopeFilter}
-             RETURN m.id AS id, m.content AS content, m.type AS type,
-                    m.scope AS scope, m.tags AS tags, m.created_at AS created_at, score
-             ORDER BY score DESC`,
-            { embedding: queryEmbedding, limit, ...(scope ? { scope } : {}) }
-          );
-          records = result.records;
-        } else {
-          // Full-text fallback
-          const scopeFilter = scope ? "WHERE m.scope = $scope OR m.scope = 'global'" : "";
-          const result = await session.run(
-            `CALL db.index.fulltext.queryNodes('memory_fulltext', $query)
-             YIELD node AS m, score
-             ${scopeFilter}
-             RETURN m.id AS id, m.content AS content, m.type AS type,
-                    m.scope AS scope, m.tags AS tags, m.created_at AS created_at, score
-             ORDER BY score DESC LIMIT $limit`,
-            { query, limit, ...(scope ? { scope } : {}) }
-          );
-          records = result.records;
-        }
-
-        const memories = records.map((r) => ({
-          id:         r.get("id"),
-          content:    r.get("content"),
-          type:       r.get("type"),
-          scope:      r.get("scope"),
-          tags:       r.get("tags"),
-          created_at: r.get("created_at"),
-          score:      r.get("score"),
-        }));
-
-        return {
-          content: [{ type: "text", text: JSON.stringify(memories, null, 2) }],
-        };
-      } finally {
-        await session.close();
+      if (queryEmbedding) {
+        // Primary path: vector similarity search via HNSW index
+        rows = await runQuery(
+          `CALL QUERY_VECTOR_INDEX('Memory', 'memory_vec', $embedding, $limit)
+           YIELD node, distance
+           ${scopeFilter}
+           RETURN node.id AS id, node.content AS content, node.type AS type,
+                  node.scope AS scope, node.tags AS tags, node.created_at AS created_at,
+                  1.0 - distance AS score
+           ORDER BY score DESC`,
+          { embedding: queryEmbedding, limit, ...(scope ? { scope } : {}) }
+        );
+      } else {
+        // Fallback: full-text BM25 search when embedder is unavailable
+        rows = await runQuery(
+          `CALL QUERY_FTS_INDEX('Memory', 'memory_fts', $query)
+           YIELD node, score
+           ${scopeFilterFts}
+           RETURN node.id AS id, node.content AS content, node.type AS type,
+                  node.scope AS scope, node.tags AS tags, node.created_at AS created_at, score
+           ORDER BY score DESC
+           LIMIT $limit`,
+          { query, limit, ...(scope ? { scope } : {}) }
+        );
       }
+
+      const memories = rows.map((r) => ({
+        id:         r.id,
+        content:    r.content,
+        type:       r.type,
+        scope:      r.scope,
+        tags:       r.tags,
+        created_at: r.created_at,
+        score:      r.score,
+      }));
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(memories, null, 2) }],
+      };
     }
   );
 }

@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { driver } from "../db.js";
+import { runQuery } from "../db.js";
 
 export function registerConnect(server: McpServer): void {
   server.tool(
@@ -13,32 +13,31 @@ export function registerConnect(server: McpServer): void {
       relation: z.string().describe("Relationship label, e.g. 'caused', 'solved_by', 'depends_on'."),
     },
     async ({ from_id, to_id, relation }) => {
-      const session = driver.session();
-      try {
-        const result = await session.run(
-          `MATCH (a:Memory {id: $from_id}), (b:Memory {id: $to_id})
-           CREATE (a)-[r:RELATES_TO {relation: $relation, created_at: $created_at}]->(b)
-           RETURN a.id AS from, b.id AS to, r.relation AS relation`,
-          { from_id, to_id, relation, created_at: new Date().toISOString() }
-        );
+      // Verify both nodes exist before creating the relationship
+      const check = await runQuery(
+        `MATCH (a:Memory {id: $from_id}), (b:Memory {id: $to_id}) RETURN a.id AS aid, b.id AS bid`,
+        { from_id, to_id }
+      );
 
-        if (result.records.length === 0) {
-          return {
-            content: [{ type: "text", text: "Error: one or both memory IDs not found." }],
-            isError: true,
-          };
-        }
-
-        const r = result.records[0];
+      if (check.length === 0) {
         return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({ from: r.get("from"), relation: r.get("relation"), to: r.get("to") }),
-          }],
+          content: [{ type: "text", text: "Error: one or both memory IDs not found." }],
+          isError: true,
         };
-      } finally {
-        await session.close();
       }
+
+      await runQuery(
+        `MATCH (a:Memory {id: $from_id}), (b:Memory {id: $to_id})
+         CREATE (a)-[:RELATES_TO {relation: $relation, created_at: $created_at}]->(b)`,
+        { from_id, to_id, relation, created_at: new Date().toISOString() }
+      );
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({ from: from_id, relation, to: to_id }),
+        }],
+      };
     }
   );
 }

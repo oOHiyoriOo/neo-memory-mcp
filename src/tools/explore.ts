@@ -1,6 +1,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { driver } from "../db.js";
+import { runQuery } from "../db.js";
+
+/** Strip KuzuDB internal fields and the large embedding vector from a node object. */
+function nodeProps(node: any): Record<string, unknown> {
+  if (!node) return {};
+  const { _id, _label, embedding, ...props } = node;
+  return props;
+}
 
 export function registerExplore(server: McpServer): void {
   server.tool(
@@ -19,55 +26,49 @@ export function registerExplore(server: McpServer): void {
         .describe("How many hops to traverse. Default 2, max 5."),
     },
     async ({ id, depth }) => {
-      const session = driver.session();
-      try {
-        const originResult = await session.run(
-          "MATCH (m:Memory {id: $id}) RETURN m",
-          { id }
-        );
+      // Step 1: get the origin node and all reachable nodes up to `depth` hops
+      const reachRows = await runQuery(
+        `MATCH (origin:Memory {id: $id})
+         OPTIONAL MATCH (origin)-[:RELATES_TO*1..${depth}]->(connected:Memory)
+         RETURN origin, collect(DISTINCT connected) AS connected`,
+        { id }
+      );
 
-        if (originResult.records.length === 0) {
-          return {
-            content: [{ type: "text", text: `No memory found with id ${id}.` }],
-            isError: true,
-          };
-        }
-
-        // Variable-length path traversal — no APOC dependency
-        const result = await session.run(
-          `MATCH (origin:Memory {id: $id})
-           OPTIONAL MATCH path = (origin)-[:RELATES_TO*1..${depth}]->(connected:Memory)
-           RETURN origin,
-                  collect(DISTINCT connected)           AS connected,
-                  collect(DISTINCT relationships(path)) AS relGroups`,
-          { id }
-        );
-
-        const rec = result.records[0];
-        const origin: any = rec.get("origin").properties;
-        const connected: any[] = (rec.get("connected") as any[])
-          .filter(Boolean)
-          .map((n: any) => n.properties);
-        const relGroups: any[][] = rec.get("relGroups") as any[][];
-        const edges = relGroups
-          .flat()
-          .filter(Boolean)
-          .map((r: any) => ({
-            from:     r.startNodeElementId,
-            to:       r.endNodeElementId,
-            relation: r.properties?.relation,
-          }));
-
-        // Strip embedding vectors — large and not useful to the agent
-        const strip = ({ embedding: _, ...rest }: any) => rest;
-        const nodes = [origin, ...connected].map(strip);
-
+      if (reachRows.length === 0 || !reachRows[0].origin) {
         return {
-          content: [{ type: "text", text: JSON.stringify({ nodes, edges }, null, 2) }],
+          content: [{ type: "text", text: `No memory found with id ${id}.` }],
+          isError: true,
         };
-      } finally {
-        await session.close();
       }
+
+      const originNode = nodeProps(reachRows[0].origin);
+      const connectedNodes = (reachRows[0].connected as any[])
+        .filter(Boolean)
+        .map(nodeProps);
+
+      const allIds = [originNode.id as string, ...connectedNodes.map((n) => n.id as string)];
+
+      // Step 2: fetch all RELATES_TO edges among the discovered nodes
+      const edgeRows = allIds.length > 1
+        ? await runQuery(
+            `MATCH (a:Memory)-[r:RELATES_TO]->(b:Memory)
+             WHERE a.id IN $ids AND b.id IN $ids
+             RETURN a.id AS from_id, r.relation AS relation, b.id AS to_id`,
+            { ids: allIds }
+          )
+        : [];
+
+      const edges = edgeRows.map((r) => ({
+        from:     r.from_id,
+        relation: r.relation,
+        to:       r.to_id,
+      }));
+
+      const nodes = [originNode, ...connectedNodes];
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({ nodes, edges }, null, 2) }],
+      };
     }
   );
 }
