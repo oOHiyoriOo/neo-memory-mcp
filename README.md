@@ -54,10 +54,11 @@ No `.env` file needed. Credentials are passed directly by the MCP client config 
 
 ## Wiring into your agent
 
-Credentials are injected via the `env` block — that's the only config you need.
+No credentials needed — just point at the script.
 
 ### Claude Desktop (`claude_desktop_config.json`)
 
+**Linux / macOS**
 ```json
 {
   "mcpServers": {
@@ -69,8 +70,21 @@ Credentials are injected via the `env` block — that's the only config you need
 }
 ```
 
+**Windows** — `npx` must be the full path (cmd/PowerShell don't resolve it otherwise):
+```json
+{
+  "mcpServers": {
+    "neo-memory": {
+      "command": "C:\\Program Files\\nodejs\\npx.cmd",
+      "args": ["tsx", "C:\\path\\to\\neo-memory-mcp\\src\\index.ts"]
+    }
+  }
+}
+```
+
 ### GitHub Copilot CLI (`.vscode/mcp.json`)
 
+**Linux / macOS**
 ```json
 {
   "servers": {
@@ -82,6 +96,21 @@ Credentials are injected via the `env` block — that's the only config you need
   }
 }
 ```
+
+**Windows**
+```json
+{
+  "servers": {
+    "neo-memory": {
+      "type": "stdio",
+      "command": "C:\\Program Files\\nodejs\\npx.cmd",
+      "args": ["tsx", "C:\\path\\to\\neo-memory-mcp\\src\\index.ts"]
+    }
+  }
+}
+```
+
+> **Tip:** find your npx path on Windows with `where npx` in a terminal.
 
 ### Agent instructions
 
