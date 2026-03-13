@@ -27,7 +27,9 @@ export function registerRecall(server: McpServer): void {
     },
     async ({ query, scope, limit }) => {
       const queryEmbedding = await embed(query);
-      const scopeFilter = scope ? "WHERE node.scope = $scope OR node.scope = 'global'" : "";
+      // KuzuDB requires a WITH clause between YIELD and WHERE — direct WHERE after YIELD is not supported
+      const scopeFilter = scope ? "WITH node, distance WHERE node.scope = $scope OR node.scope = 'global'" : "";
+      const scopeFilterFts = scope ? "WITH node, score WHERE node.scope = $scope OR node.scope = 'global'" : "";
       let rows: Record<string, any>[];
 
       if (queryEmbedding) {
@@ -47,7 +49,7 @@ export function registerRecall(server: McpServer): void {
         rows = await runQuery(
           `CALL QUERY_FTS_INDEX('Memory', 'memory_fts', $query)
            YIELD node, score
-           ${scopeFilter}
+           ${scopeFilterFts}
            RETURN node.id AS id, node.content AS content, node.type AS type,
                   node.scope AS scope, node.tags AS tags, node.created_at AS created_at, score
            ORDER BY score DESC
