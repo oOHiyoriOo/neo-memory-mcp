@@ -95,6 +95,19 @@ Credentials are injected via the `env` block — that's the only config you need
 }
 ```
 
+### Agent instructions
+
+The MCP tools alone aren't enough — the agent needs to know *when* and *how* to use them.  
+Copy the contents of [`AGENT_INSTRUCTIONS.md`](./AGENT_INSTRUCTIONS.md) into your agent's system prompt / custom instructions block.
+
+This tells the agent to:
+- Recall context at the start of every session
+- Store memories continuously as work happens (not just at the end)
+- Connect related memories into a graph
+- Leave every session more useful than it found it
+
+Without this, most agents will technically have access to the tools but use them rarely or only when explicitly asked.
+
 ---
 
 ## Tools
