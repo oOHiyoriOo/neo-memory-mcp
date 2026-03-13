@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { randomUUID } from "crypto";
-import { driver } from "../db.js";
+import { runQuery } from "../db.js";
 import { embed } from "../embedder.js";
 
 export function registerRemember(server: McpServer): void {
@@ -31,40 +31,34 @@ export function registerRemember(server: McpServer): void {
       const created_at = new Date().toISOString();
       const embedding = await embed(content);
 
-      const session = driver.session();
-      try {
-        if (scope !== "global") {
-          await session.run("MERGE (p:Project {name: $name})", { name: scope });
-        }
-
-        // Conditionally include embedding field only when available
-        const embeddingClause = embedding ? ", embedding: $embedding" : "";
-        await session.run(
-          `CREATE (m:Memory {
-            id: $id, content: $content, type: $type,
-            scope: $scope, tags: $tags, created_at: $created_at
-            ${embeddingClause}
-          })`,
-          { id, content, type, scope, tags, created_at, ...(embedding ? { embedding } : {}) }
-        );
-
-        if (scope !== "global") {
-          await session.run(
-            `MATCH (m:Memory {id: $id}), (p:Project {name: $scope})
-             CREATE (m)-[:PART_OF]->(p)`,
-            { id, scope }
-          );
-        }
-
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({ id, content, type, scope, tags, created_at, embedded: embedding !== null }),
-          }],
-        };
-      } finally {
-        await session.close();
+      if (scope !== "global") {
+        // MERGE ensures the Project node exists without duplicating it
+        await runQuery("MERGE (p:Project {name: $name})", { name: scope });
       }
+
+      await runQuery(
+        `CREATE (:Memory {
+          id: $id, content: $content, type: $type,
+          scope: $scope, tags: $tags, created_at: $created_at,
+          embedding: $embedding
+        })`,
+        { id, content, type, scope, tags: tags.length > 0 ? tags : null, created_at, embedding }
+      );
+
+      if (scope !== "global") {
+        await runQuery(
+          `MATCH (m:Memory {id: $id}), (p:Project {name: $scope})
+           CREATE (m)-[:PART_OF]->(p)`,
+          { id, scope }
+        );
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({ id, content, type, scope, tags, created_at, embedded: embedding !== null }),
+        }],
+      };
     }
   );
 }

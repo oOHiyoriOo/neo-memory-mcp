@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { driver, bootstrapSchema } from "./db.js";
+import { bootstrapSchema } from "./db.js";
 import { getEmbedder } from "./embedder.js";
 import { registerRemember } from "./tools/remember.js";
 import { registerRecall }   from "./tools/recall.js";
@@ -17,14 +17,8 @@ registerForget(server);
 registerExplore(server);
 
 async function main(): Promise<void> {
-  const session = driver.session();
-  try {
-    await session.run("RETURN 1");
-    await bootstrapSchema(session);
-    console.error("[neo-memory] Connected to Neo4j. Schema ready.");
-  } finally {
-    await session.close();
-  }
+  await bootstrapSchema();
+  console.error("[neo-memory] KuzuDB ready. Schema bootstrapped.");
 
   // Warm up the embedder without blocking startup
   getEmbedder().then((e) => {
