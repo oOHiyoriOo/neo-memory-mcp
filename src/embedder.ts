@@ -1,6 +1,10 @@
 import { FlagEmbedding, EmbeddingModel } from "fastembed";
+import os from "os";
+import path from "path";
 
 let embedder: FlagEmbedding | null = null;
+
+const CACHE_DIR = path.join(os.homedir(), ".cache", "fastembed");
 
 /**
  * Lazily initialises the local ONNX embedding model.
@@ -10,7 +14,7 @@ let embedder: FlagEmbedding | null = null;
 export async function getEmbedder(): Promise<FlagEmbedding | null> {
   if (embedder) return embedder;
   try {
-    embedder = await FlagEmbedding.init({ model: EmbeddingModel.BGESmallENV15 });
+    embedder = await FlagEmbedding.init({ model: EmbeddingModel.BGESmallENV15, cacheDir: CACHE_DIR });
     return embedder;
   } catch (err) {
     console.error("[neo-memory] embedder init failed — full-text fallback active", err);
