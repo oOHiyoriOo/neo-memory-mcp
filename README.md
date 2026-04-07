@@ -40,7 +40,7 @@ cd neo-memory-mcp
 npm install
 ```
 
-No `.env` file needed. Credentials are passed directly by the MCP client config (see below).
+No credentials needed — the server is local and unauthenticated by design.
 
 ### Environment variables
 
@@ -88,7 +88,11 @@ RestartSec=3
 WantedBy=default.target
 ```
 
+> **Note:** systemd does not inherit your shell's `PATH`. Use the full path to `node`  
+> (`which node` on Linux/macOS, `Get-Command node` on Windows/WSL).
+
 ```bash
+systemctl --user daemon-reload
 systemctl --user enable --now neo-memory
 ```
 
@@ -126,7 +130,9 @@ systemctl --user enable --now neo-memory
 
 ## Wiring into your agent (stdio — single session only)
 
-If you only ever run one session at a time, the simpler stdio mode still works fine.
+> ⚠️ **Stdio and the HTTP daemon are mutually exclusive.** KuzuDB allows only one process to hold the database lock. If the daemon is running, stdio will fail to start. Stop the daemon first (`systemctl --user stop neo-memory`) before switching back to stdio mode.
+
+If you only ever run one session at a time, the simpler stdio mode works fine — no daemon needed.
 
 > **Note:** stdio and HTTP daemon mode are mutually exclusive — set `HTTP_PORT` only when running as a daemon.
 
