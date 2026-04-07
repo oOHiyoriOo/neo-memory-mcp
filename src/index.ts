@@ -81,7 +81,7 @@ async function startHttp(port: number): Promise<void> {
   });
 
   httpServer.listen(port, "127.0.0.1", () => {
-    console.error(`[neo-memory] HTTP daemon listening on http://localhost:${port}/mcp`);
+    console.error(`[neo-memory] HTTP daemon listening on http://127.0.0.1:${port}/mcp (localhost only)`);
     console.error("[neo-memory] All sessions share one Neo4j connection.");
   });
 }
