@@ -44,19 +44,91 @@ No `.env` file needed. Credentials are passed directly by the MCP client config 
 
 ### Environment variables
 
-| Variable          | Default                  | Description            |
-|-------------------|--------------------------|------------------------|
-| `NEO4J_URI`       | `bolt://localhost:7687`  | Neo4j Bolt URI         |
-| `NEO4J_USER`      | `neo4j`                  | Neo4j username         |
-| `NEO4J_PASSWORD`  | `password`               | Neo4j password         |
+| Variable          | Default                  | Description                                                    |
+|-------------------|--------------------------|----------------------------------------------------------------|
+| `NEO4J_URI`       | `bolt://localhost:7687`  | Neo4j Bolt URI                                                 |
+| `NEO4J_USER`      | `neo4j`                  | Neo4j username                                                 |
+| `NEO4J_PASSWORD`  | `password`               | Neo4j password                                                 |
+| `HTTP_PORT`       | *(unset)*                | When set, run as HTTP daemon instead of stdio (see below)      |
 
 > **Local dev / testing:** pass them inline — `NEO4J_PASSWORD=secret npm run dev`
 
 ---
 
-## Wiring into your agent
+## Multi-session / HTTP daemon mode
 
-Credentials are injected via the `env` block — that's the only config you need.
+If you run multiple sessions (e.g. Claude `/resume`, Copilot + Claude in parallel), each spawns its own stdio process. Running as an HTTP daemon lets all sessions share one process.
+
+**Fix: run the server as a background HTTP daemon.**  
+One process owns the Neo4j connection; every session connects to it over HTTP.
+
+### 1. Start the daemon (once, at login or via a service)
+
+```bash
+HTTP_PORT=3742 node /path/to/neo-memory-mcp/dist/index.js
+```
+
+Or with a systemd user service (`~/.config/systemd/user/neo-memory.service`):
+
+```ini
+[Unit]
+Description=neo-memory MCP daemon
+After=network.target
+
+[Service]
+ExecStart=/full/path/to/node /path/to/neo-memory-mcp/dist/index.js
+Environment=HTTP_PORT=3742
+Environment=NEO4J_URI=bolt://localhost:7687
+Environment=NEO4J_USER=neo4j
+Environment=NEO4J_PASSWORD=password
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user enable --now neo-memory
+```
+
+> **Note:** Use the full path to `node` (e.g. `which node`) — bare `node` may not resolve correctly with nvm/fnm.
+
+### 2. Point your MCP clients at the daemon
+
+#### Claude Desktop (`claude_desktop_config.json`)
+
+```json
+{
+  "mcpServers": {
+    "neo-memory": {
+      "type": "http",
+      "url": "http://localhost:3742/mcp"
+    }
+  }
+}
+```
+
+#### GitHub Copilot CLI (`.vscode/mcp.json`)
+
+```json
+{
+  "servers": {
+    "neo-memory": {
+      "type": "http",
+      "url": "http://localhost:3742/mcp"
+    }
+  }
+}
+```
+
+---
+
+## Wiring into your agent (stdio — single session only)
+
+If you only ever run one session at a time, the simpler stdio mode still works fine.
+
+> **Note:** stdio and HTTP daemon mode are mutually exclusive — set `HTTP_PORT` only when running as a daemon.
 
 ### Claude Desktop (`claude_desktop_config.json`)
 
