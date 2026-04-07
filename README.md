@@ -2,7 +2,7 @@
 
 Simple KuzuDB-backed memory MCP for coding agents (GitHub Copilot CLI, Claude CLI, etc).
 
-No cloud. No markdown files. No external server. No over-engineering.  
+No cloud. No markdown files. No over-engineering.  
 Just KuzuDB (embedded) + local ONNX embeddings + 5 tools.
 
 ---
@@ -40,7 +40,7 @@ cd neo-memory-mcp
 npm install
 ```
 
-No `.env` file needed. Credentials are passed directly by the MCP client config (see below).
+No credentials needed — the server is local and unauthenticated by design.
 
 ### Environment variables
 
@@ -72,17 +72,23 @@ Or with a systemd user service (`~/.config/systemd/user/neo-memory.service`):
 ```ini
 [Unit]
 Description=neo-memory MCP daemon
+After=network.target
 
 [Service]
-ExecStart=node /path/to/neo-memory-mcp/dist/index.js
+ExecStart=/full/path/to/node /path/to/neo-memory-mcp/dist/index.js
 Environment=HTTP_PORT=3742
 Restart=on-failure
+RestartSec=3
 
 [Install]
 WantedBy=default.target
 ```
 
+> **Note:** systemd does not inherit your shell's `PATH`. Use the full path to `node`  
+> (`which node` on Linux/macOS, `Get-Command node` on Windows/WSL).
+
 ```bash
+systemctl --user daemon-reload
 systemctl --user enable --now neo-memory
 ```
 
@@ -118,7 +124,9 @@ systemctl --user enable --now neo-memory
 
 ## Wiring into your agent (stdio — single session only)
 
-If you only ever run one session at a time, the simpler stdio mode still works fine.
+> ⚠️ **Stdio and the HTTP daemon are mutually exclusive.** KuzuDB allows only one process to hold the database lock. If the daemon is running, stdio will fail to start. Stop the daemon first (`systemctl --user stop neo-memory`) before switching back to stdio mode.
+
+If you only ever run one session at a time, the simpler stdio mode works fine — no daemon needed.
 
 ### Claude Desktop (`claude_desktop_config.json`)
 
