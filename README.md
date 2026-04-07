@@ -44,17 +44,81 @@ No `.env` file needed. Credentials are passed directly by the MCP client config 
 
 ### Environment variables
 
-| Variable        | Default                               | Description                       |
-|-----------------|---------------------------------------|-----------------------------------|
-| `KUZU_DB_PATH`  | `~/.local/share/neo-memory/db`        | Path to the KuzuDB database dir   |
+| Variable        | Default                               | Description                                                    |
+|-----------------|---------------------------------------|----------------------------------------------------------------|
+| `KUZU_DB_PATH`  | `~/.local/share/neo-memory/db`        | Path to the KuzuDB database dir                                |
+| `HTTP_PORT`     | *(unset)*                             | When set, run as HTTP daemon instead of stdio (see below)      |
 
 > **Override example:** `KUZU_DB_PATH=/data/my-memory npm run dev`
 
 ---
 
-## Wiring into your agent
+## Multi-session / HTTP daemon mode
 
-No credentials needed — just point at the script.
+KuzuDB is an embedded database — only **one process** can hold it open at a time.  
+If you run multiple sessions (e.g. Claude `/resume`, Copilot + Claude in parallel), each spawns its own stdio process and the second one **fails to open the DB**.
+
+**Fix: run the server as a background HTTP daemon.**  
+One process owns KuzuDB; every session connects to it over HTTP.
+
+### 1. Start the daemon (once, at login or via a service)
+
+```bash
+HTTP_PORT=3742 node /path/to/neo-memory-mcp/dist/index.js
+```
+
+Or with a systemd user service (`~/.config/systemd/user/neo-memory.service`):
+
+```ini
+[Unit]
+Description=neo-memory MCP daemon
+
+[Service]
+ExecStart=node /path/to/neo-memory-mcp/dist/index.js
+Environment=HTTP_PORT=3742
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user enable --now neo-memory
+```
+
+### 2. Point your MCP clients at the daemon
+
+#### Claude Desktop (`claude_desktop_config.json`)
+
+```json
+{
+  "mcpServers": {
+    "neo-memory": {
+      "type": "http",
+      "url": "http://localhost:3742/mcp"
+    }
+  }
+}
+```
+
+#### GitHub Copilot CLI (`.vscode/mcp.json`)
+
+```json
+{
+  "servers": {
+    "neo-memory": {
+      "type": "http",
+      "url": "http://localhost:3742/mcp"
+    }
+  }
+}
+```
+
+---
+
+## Wiring into your agent (stdio — single session only)
+
+If you only ever run one session at a time, the simpler stdio mode still works fine.
 
 ### Claude Desktop (`claude_desktop_config.json`)
 
