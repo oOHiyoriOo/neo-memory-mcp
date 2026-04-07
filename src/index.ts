@@ -80,8 +80,8 @@ async function startHttp(port: number): Promise<void> {
     await transport.handleRequest(req, res);
   });
 
-  httpServer.listen(port, () => {
-    console.error(`[neo-memory] HTTP daemon listening on http://localhost:${port}/mcp`);
+  httpServer.listen(port, "127.0.0.1", () => {
+    console.error(`[neo-memory] HTTP daemon listening on http://127.0.0.1:${port}/mcp (localhost only)`);
     console.error("[neo-memory] All sessions share one KuzuDB connection — no more lock conflicts.");
   });
 }

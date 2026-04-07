@@ -95,7 +95,7 @@ systemctl --user enable --now neo-memory
   "mcpServers": {
     "neo-memory": {
       "type": "http",
-      "url": "http://localhost:3742/mcp"
+      "url": "http://127.0.0.1:3742/mcp"
     }
   }
 }
@@ -108,7 +108,7 @@ systemctl --user enable --now neo-memory
   "servers": {
     "neo-memory": {
       "type": "http",
-      "url": "http://localhost:3742/mcp"
+      "url": "http://127.0.0.1:3742/mcp"
     }
   }
 }
