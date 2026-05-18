@@ -1,8 +1,13 @@
-import { FlagEmbedding, EmbeddingModel } from "fastembed";
 import os from "os";
 import path from "path";
 
-let embedder: FlagEmbedding | null = null;
+// fastembed is imported dynamically so a missing native ARM64 binary
+// (@anush008/tokenizers-linux-arm64-gnu) only causes a graceful fallback
+// instead of crashing the whole process at module load time.
+type FlagEmbeddingType = import("fastembed").FlagEmbedding;
+
+let embedder: FlagEmbeddingType | null = null;
+let embedderUnavailable = false;
 
 const CACHE_DIR = path.join(os.homedir(), ".cache", "fastembed");
 
@@ -11,12 +16,15 @@ const CACHE_DIR = path.join(os.homedir(), ".cache", "fastembed");
  * Downloads ~33 MB on first run, then cached to ~/.cache/fastembed.
  * Returns null on failure so callers fall back to full-text search gracefully.
  */
-export async function getEmbedder(): Promise<FlagEmbedding | null> {
+export async function getEmbedder(): Promise<FlagEmbeddingType | null> {
   if (embedder) return embedder;
+  if (embedderUnavailable) return null;
   try {
+    const { FlagEmbedding, EmbeddingModel } = await import("fastembed");
     embedder = await FlagEmbedding.init({ model: EmbeddingModel.BGESmallENV15, cacheDir: CACHE_DIR });
     return embedder;
   } catch (err) {
+    embedderUnavailable = true;
     console.error("[neo-memory] embedder init failed — full-text fallback active", err);
     return null;
   }
