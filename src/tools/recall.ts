@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import neo4j from "neo4j-driver";
 import { driver } from "../db.js";
 import { embed } from "../embedder.js";
 
@@ -31,17 +32,24 @@ export function registerRecall(server: McpServer): void {
         const queryEmbedding = await embed(query);
         let records;
 
+        // Neo4j requires true integers — JS numbers serialize as floats (e.g. 10.0) and
+        // are rejected by LIMIT and queryNodes.
+        const neoLimit      = neo4j.int(limit);
+        // Fetch a larger pre-filter window so scope filtering doesn't shrink results below limit.
+        const neoFetchLimit = neo4j.int(limit * 10);
+
         if (queryEmbedding) {
           // Vector similarity — primary path
           const scopeFilter = scope ? "WHERE m.scope = $scope OR m.scope = 'global'" : "";
           const result = await session.run(
-            `CALL db.index.vector.queryNodes('memory_vector', $limit, $embedding)
+            `CALL db.index.vector.queryNodes('memory_vector', $fetchLimit, $embedding)
              YIELD node AS m, score
              ${scopeFilter}
              RETURN m.id AS id, m.content AS content, m.type AS type,
                     m.scope AS scope, m.tags AS tags, m.created_at AS created_at, score
-             ORDER BY score DESC`,
-            { embedding: queryEmbedding, limit, ...(scope ? { scope } : {}) }
+             ORDER BY score DESC
+             LIMIT $limit`,
+            { embedding: queryEmbedding, fetchLimit: neoFetchLimit, limit: neoLimit, ...(scope ? { scope } : {}) }
           );
           records = result.records;
         } else {
@@ -54,7 +62,7 @@ export function registerRecall(server: McpServer): void {
              RETURN m.id AS id, m.content AS content, m.type AS type,
                     m.scope AS scope, m.tags AS tags, m.created_at AS created_at, score
              ORDER BY score DESC LIMIT $limit`,
-            { query, limit, ...(scope ? { scope } : {}) }
+            { query, limit: neoLimit, ...(scope ? { scope } : {}) }
           );
           records = result.records;
         }

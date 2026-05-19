@@ -33,13 +33,22 @@ export function registerExplore(server: McpServer): void {
           };
         }
 
-        // Variable-length path traversal — no APOC dependency
+        // Variable-length path traversal — no APOC dependency.
+        // List comprehension extracts Memory.id (UUID) from each relationship's
+        // start/end nodes so edges are human-readable and matchable to node ids.
         const result = await session.run(
           `MATCH (origin:Memory {id: $id})
            OPTIONAL MATCH path = (origin)-[:RELATES_TO*1..${depth}]->(connected:Memory)
+           WITH origin,
+                collect(DISTINCT connected)       AS connected,
+                collect(path)                      AS paths
            RETURN origin,
-                  collect(DISTINCT connected)           AS connected,
-                  collect(DISTINCT relationships(path)) AS relGroups`,
+                  connected,
+                  reduce(flat = [], p IN paths |
+                    flat + [r IN relationships(p) |
+                      {from: startNode(r).id, to: endNode(r).id, relation: r.relation}
+                    ]
+                  ) AS edges`,
           { id }
         );
 
@@ -48,15 +57,14 @@ export function registerExplore(server: McpServer): void {
         const connected: any[] = (rec.get("connected") as any[])
           .filter(Boolean)
           .map((n: any) => n.properties);
-        const relGroups: any[][] = rec.get("relGroups") as any[][];
-        const edges = relGroups
-          .flat()
-          .filter(Boolean)
-          .map((r: any) => ({
-            from:     r.startNodeElementId,
-            to:       r.endNodeElementId,
-            relation: r.properties?.relation,
-          }));
+
+        // Deduplicate edges (same edge can appear in multiple paths)
+        const edgeMap = new Map<string, object>();
+        for (const e of (rec.get("edges") as any[]).filter(Boolean)) {
+          const key = `${e.from}->${e.to}`;
+          if (!edgeMap.has(key)) edgeMap.set(key, e);
+        }
+        const edges = Array.from(edgeMap.values());
 
         // Strip embedding vectors — large and not useful to the agent
         const strip = ({ embedding: _, ...rest }: any) => rest;
