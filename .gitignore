@@ -2,9 +2,6 @@ node_modules/
 dist/
 .env
 *.js.map
-
 local_cache/
-
-
-#Ignore vscode AI rules
-.github/instructions/codacy.instructions.md
+.github/
+external_docs/

@@ -39,6 +39,17 @@ async function startHttp(port: number): Promise<void> {
   const sessions = new Map<string, StreamableHTTPServerTransport>();
 
   const httpServer = http.createServer(async (req, res) => {
+    // CORS: stage early — survives through @hono/node-server
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
+
+    if (req.method === "OPTIONS") {
+      res.setHeader("Access-Control-Allow-Methods", "*");
+      res.setHeader("Access-Control-Allow-Headers", "*");
+      res.writeHead(204).end();
+      return;
+    }
+
     if (req.url !== "/mcp") {
       res.writeHead(404).end("Not found");
       return;
@@ -80,8 +91,8 @@ async function startHttp(port: number): Promise<void> {
     await transport.handleRequest(req, res);
   });
 
-  httpServer.listen(port, "127.0.0.1", () => {
-    console.error(`[neo-memory] HTTP daemon listening on http://127.0.0.1:${port}/mcp (localhost only)`);
+  httpServer.listen(port, "0.0.0.0", () => {
+    console.error(`[neo-memory] HTTP daemon listening on http://0.0.0.0:${port}/mcp`);
     console.error("[neo-memory] All sessions share one Neo4j connection.");
   });
 }
