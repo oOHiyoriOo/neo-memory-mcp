@@ -9,7 +9,7 @@ You have access to a persistent memory graph backed by Neo4j.
 
 Before writing a single line of code or answering any technical question:
 1. Call `recall` with the project name and a short description of the current task.
-2. Review what comes back — past decisions, known issues, patterns, unfinished tasks.
+2. Review what comes back — past decisions, patterns, solutions, and context.
 3. Let that context shape your approach.
 
 > Skipping this step means working blind. Don't.
@@ -24,12 +24,12 @@ When in doubt, store it. A slightly redundant memory costs nothing; a lost insig
 Store a memory whenever you:
 - Make or discover an **architectural or design decision** — even small ones (`type: decision`)
 - Notice a **coding pattern or convention** in the codebase (`type: pattern`)
-- Hit a **bug, gotcha, or surprising behaviour** — even if you fix it immediately (`type: issue`)
-- Find a **non-obvious solution or workaround** (`type: solution`)
+- Hit a **bug, gotcha, or surprising behaviour** and find a **non-obvious solution or workaround** (`type: solution`)
 - Learn a **user preference** about tools, style, naming, workflow, or communication (`type: preference`)
 - Complete a task — store **what was changed and why** (`type: context`)
-- Leave something **unfinished or deferred** (`type: task`)
 - Learn anything about the **project structure, tech stack, or external dependencies** (`type: context`)
+
+Note: transient issues and pending tasks belong in the project's planning tool or git history, not here — this memory is for durable knowledge (decisions, patterns, solutions, preferences, context) that outlives any single task.
 
 **Examples of things that should always be stored:**
 - "Fixed fastembed defaulting to a relative `local_cache/` path — now uses `~/.cache/fastembed`."
@@ -43,10 +43,8 @@ Store a memory whenever you:
 ### Connect related memories
 
 After storing two memories that are related, call `connect` to link them:
-- `issue` → `solution` with relation `solved_by`
 - `decision` → `pattern` with relation `led_to`
-- `task` → `context` with relation `relates_to`
-- `bug` → `workaround` with relation `fixed_by`
+- `context` → `solution` with relation `fixed_by`
 
 Relationships turn isolated facts into a knowledge graph. They are what make recall useful over time.
 

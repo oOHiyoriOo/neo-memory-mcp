@@ -13,7 +13,7 @@ export function registerExplore(server: McpServer): void {
   server.tool(
     "explore",
     "Traverse the memory graph outward from a starting node. Returns all connected memories " +
-    "up to the specified depth. Useful for understanding the full context around a decision, issue, or entity.",
+    "up to the specified depth. Useful for understanding the full context around a decision or entity.",
     {
       id: z.string().describe("ID of the memory to start traversal from."),
       depth: z

@@ -207,7 +207,7 @@ Store a new memory.
 | Param     | Type       | Required | Description |
 |-----------|------------|----------|-------------|
 | `content` | `string`   | ✅       | The memory content |
-| `type`    | `enum`     | —        | `decision` \| `pattern` \| `preference` \| `issue` \| `solution` \| `task` \| `context` \| `entity` |
+| `type`    | `enum`     | —        | `decision` \| `pattern` \| `preference` \| `solution` \| `context` \| `entity` |
 | `scope`   | `string`   | —        | Project name or `"global"` (default) |
 | `tags`    | `string[]` | —        | Keywords to aid recall |
 
@@ -263,8 +263,6 @@ Traverse the graph outward from a memory node. Returns all connected nodes and e
 | `decision`   | Architectural / design choices and their rationale |
 | `pattern`    | Coding conventions and patterns to follow |
 | `preference` | User preferences (tools, style, workflow) |
-| `issue`      | Known bugs, gotchas, pain points |
-| `solution`   | How a past issue was resolved |
-| `task`       | Ongoing / pending work across sessions |
+| `solution`   | Non-obvious fixes or workarounds worth remembering |
 | `context`    | General project background |
 | `entity`     | Person, team, technology, external system |

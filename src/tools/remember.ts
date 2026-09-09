@@ -11,7 +11,7 @@ export function registerRemember(server: McpServer): void {
     {
       content: z.string().describe("The memory content to store."),
       type: z
-        .enum(["decision", "pattern", "preference", "issue", "solution", "task", "context", "entity"])
+        .enum(["decision", "pattern", "preference", "solution", "context", "entity"])
         .optional()
         .default("context")
         .describe("Category of memory."),
