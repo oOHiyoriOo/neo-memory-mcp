@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { driver } from "../db.js";
+import { config } from "../config.js";
 
 export function registerExplore(server: McpServer): void {
   server.tool(
@@ -20,10 +21,13 @@ export function registerExplore(server: McpServer): void {
     },
     async ({ id, depth }) => {
       const session = driver.session();
+      const scope = config.memory.scope;
+      const memoryPattern = scope ? "id: $id, scope: $scope" : "id: $id";
+      const params = scope ? { id, scope } : { id };
       try {
         const originResult = await session.run(
-          "MATCH (m:Memory {id: $id}) RETURN m",
-          { id }
+          `MATCH (m:Memory {${memoryPattern}}) RETURN m`,
+          params
         );
 
         if (originResult.records.length === 0) {
@@ -37,8 +41,9 @@ export function registerExplore(server: McpServer): void {
         // List comprehension extracts Memory.id (UUID) from each relationship's
         // start/end nodes so edges are human-readable and matchable to node ids.
         const result = await session.run(
-          `MATCH (origin:Memory {id: $id})
+          `MATCH (origin:Memory {${memoryPattern}})
            OPTIONAL MATCH path = (origin)-[:RELATES_TO*1..${depth}]->(connected:Memory)
+           ${scope ? "WHERE path IS NULL OR all(node IN nodes(path) WHERE node.scope = $scope)" : ""}
            WITH origin,
                 collect(DISTINCT connected)       AS connected,
                 collect(path)                      AS paths
@@ -49,7 +54,7 @@ export function registerExplore(server: McpServer): void {
                       {from: startNode(r).id, to: endNode(r).id, relation: r.relation}
                     ]
                   ) AS edges`,
-          { id }
+          params
         );
 
         const rec = result.records[0];

@@ -13,4 +13,7 @@ export const config = {
      */
     port: process.env.HTTP_PORT ? parseInt(process.env.HTTP_PORT, 10) : undefined,
   },
+  memory: {
+    scope: process.env.NEO_MEMORY_SCOPE?.trim() || undefined,
+  },
 } as const;

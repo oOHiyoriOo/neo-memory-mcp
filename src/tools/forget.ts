@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { driver } from "../db.js";
+import { config } from "../config.js";
 
 export function registerForget(server: McpServer): void {
   server.tool(
@@ -11,10 +12,12 @@ export function registerForget(server: McpServer): void {
     },
     async ({ id }) => {
       const session = driver.session();
+      const scope = config.memory.scope;
       try {
         const result = await session.run(
-          `MATCH (m:Memory {id: $id}) DETACH DELETE m RETURN count(m) AS deleted`,
-          { id }
+          `MATCH (m:Memory {id: $id${scope ? ", scope: $scope" : ""}})
+           DETACH DELETE m RETURN count(m) AS deleted`,
+          { id, ...(scope ? { scope } : {}) }
         );
 
         const deleted = result.records[0]?.get("deleted").toNumber() ?? 0;

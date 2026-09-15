@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { driver } from "../db.js";
+import { config } from "../config.js";
 
 export function registerConnect(server: McpServer): void {
   server.tool(
@@ -14,12 +15,20 @@ export function registerConnect(server: McpServer): void {
     },
     async ({ from_id, to_id, relation }) => {
       const session = driver.session();
+      const scope = config.memory.scope;
+      const memoryPattern = scope ? ", scope: $scope" : "";
       try {
         const result = await session.run(
-          `MATCH (a:Memory {id: $from_id}), (b:Memory {id: $to_id})
+          `MATCH (a:Memory {id: $from_id${memoryPattern}}), (b:Memory {id: $to_id${memoryPattern}})
            CREATE (a)-[r:RELATES_TO {relation: $relation, created_at: $created_at}]->(b)
            RETURN a.id AS from, b.id AS to, r.relation AS relation`,
-          { from_id, to_id, relation, created_at: new Date().toISOString() }
+          {
+            from_id,
+            to_id,
+            relation,
+            created_at: new Date().toISOString(),
+            ...(scope ? { scope } : {})
+          }
         );
 
         if (result.records.length === 0) {

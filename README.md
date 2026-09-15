@@ -50,8 +50,14 @@ No credentials needed — the server is local and unauthenticated by design.
 | `NEO4J_USER`      | `neo4j`                  | Neo4j username                                                 |
 | `NEO4J_PASSWORD`  | `password`               | Neo4j password                                                 |
 | `HTTP_PORT`       | *(unset)*                | When set, run as HTTP daemon instead of stdio (see below)      |
+| `NEO_MEMORY_SCOPE`| *(unset)*                | Isolate every memory operation to this project scope           |
 
 > **Local dev / testing:** pass them inline — `NEO4J_PASSWORD=secret npm run dev`
+
+When `NEO_MEMORY_SCOPE` is set, recall excludes global and other-project
+memories, remember always writes to that scope, and graph operations cannot
+cross its boundary. Leave it unset to retain the normal project-plus-global
+recall behavior.
 
 ---
 

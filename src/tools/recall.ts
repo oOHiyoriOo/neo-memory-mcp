@@ -3,12 +3,17 @@ import { z } from "zod";
 import neo4j from "neo4j-driver";
 import { driver } from "../db.js";
 import { embed } from "../embedder.js";
+import { config } from "../config.js";
 
 export function registerRecall(server: McpServer): void {
+  const description = config.memory.scope
+    ? `Search memories by semantic similarity in the isolated "${config.memory.scope}" scope. Global and other project memories are excluded.`
+    : "Search memories by semantic similarity. Provide a descriptive query — the agent should " +
+      "describe what it's looking for in natural language. Optionally filter by project scope.";
+
   server.tool(
     "recall",
-    "Search memories by semantic similarity. Provide a descriptive query — the agent should " +
-    "describe what it's looking for in natural language. Optionally filter by project scope.",
+    description,
     {
       query: z
         .string()
@@ -16,7 +21,11 @@ export function registerRecall(server: McpServer): void {
       scope: z
         .string()
         .optional()
-        .describe("Limit results to a project scope. Omit to search all memories including global."),
+        .describe(
+          config.memory.scope
+            ? "Ignored in isolated server mode; results are always limited to the configured scope."
+            : "Limit results to a project scope. Omit to search all memories including global."
+        ),
       limit: z
         .number()
         .int()
@@ -30,6 +39,13 @@ export function registerRecall(server: McpServer): void {
       const session = driver.session();
       try {
         const queryEmbedding = await embed(query);
+        const activeScope = config.memory.scope ?? scope;
+        const scopeFilter = activeScope
+          ? config.memory.scope
+            ? "WHERE m.scope = $scope"
+            : "WHERE m.scope = $scope OR m.scope = 'global'"
+          : "";
+        const scopeParams = activeScope ? { scope: activeScope } : {};
         let records;
 
         // Neo4j requires true integers — JS numbers serialize as floats (e.g. 10.0) and
@@ -40,7 +56,6 @@ export function registerRecall(server: McpServer): void {
 
         if (queryEmbedding) {
           // Vector similarity — primary path
-          const scopeFilter = scope ? "WHERE m.scope = $scope OR m.scope = 'global'" : "";
           const result = await session.run(
             `CALL db.index.vector.queryNodes('memory_vector', $fetchLimit, $embedding)
              YIELD node AS m, score
@@ -49,12 +64,11 @@ export function registerRecall(server: McpServer): void {
                     m.scope AS scope, m.tags AS tags, m.created_at AS created_at, score
              ORDER BY score DESC
              LIMIT $limit`,
-            { embedding: queryEmbedding, fetchLimit: neoFetchLimit, limit: neoLimit, ...(scope ? { scope } : {}) }
+            { embedding: queryEmbedding, fetchLimit: neoFetchLimit, limit: neoLimit, ...scopeParams }
           );
           records = result.records;
         } else {
           // Full-text fallback
-          const scopeFilter = scope ? "WHERE m.scope = $scope OR m.scope = 'global'" : "";
           const result = await session.run(
             `CALL db.index.fulltext.queryNodes('memory_fulltext', $query)
              YIELD node AS m, score
@@ -62,7 +76,7 @@ export function registerRecall(server: McpServer): void {
              RETURN m.id AS id, m.content AS content, m.type AS type,
                     m.scope AS scope, m.tags AS tags, m.created_at AS created_at, score
              ORDER BY score DESC LIMIT $limit`,
-            { query, limit: neoLimit, ...(scope ? { scope } : {}) }
+            { query, limit: neoLimit, ...scopeParams }
           );
           records = result.records;
         }
