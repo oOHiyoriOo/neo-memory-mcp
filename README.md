@@ -136,7 +136,7 @@ systemctl --user enable --now neo-memory
 
 ## Wiring into your agent (stdio — single session only)
 
-> ⚠️ **Stdio and the HTTP daemon are mutually exclusive.** KuzuDB allows only one process to hold the database lock. If the daemon is running, stdio will fail to start. Stop the daemon first (`systemctl --user stop neo-memory`) before switching back to stdio mode.
+> ℹ️ **HTTP daemon mode is optional.** Use it when you want multiple clients to share one long-lived Neo4j-backed MCP process; otherwise stdio mode is fine for a single session.
 
 If you only ever run one session at a time, the simpler stdio mode works fine — no daemon needed.
 
