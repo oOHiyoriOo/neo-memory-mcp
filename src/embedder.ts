@@ -1,27 +1,27 @@
 import os from "os";
 import path from "path";
 
-// fastembed is imported dynamically so a missing native ARM64 binary
-// (@anush008/tokenizers-linux-arm64-gnu) only causes a graceful fallback
-// instead of crashing the whole process at module load time.
-type FlagEmbeddingType = import("fastembed").FlagEmbedding;
+// The ML runtime is imported dynamically so missing native binaries only
+// activate the existing full-text fallback.
+type EmbedderType = import("@huggingface/transformers").FeatureExtractionPipeline;
 
-let embedder: FlagEmbeddingType | null = null;
+let embedder: EmbedderType | null = null;
 let embedderUnavailable = false;
 
-const CACHE_DIR = path.join(os.homedir(), ".cache", "fastembed");
+const CACHE_DIR = path.join(os.homedir(), ".cache", "transformers");
 
 /**
  * Lazily initialises the local ONNX embedding model.
- * Downloads ~33 MB on first run, then cached to ~/.cache/fastembed.
+ * Downloads the model on first run, then caches it to ~/.cache/transformers.
  * Returns null on failure so callers fall back to full-text search gracefully.
  */
-export async function getEmbedder(): Promise<FlagEmbeddingType | null> {
+export async function getEmbedder(): Promise<EmbedderType | null> {
   if (embedder) return embedder;
   if (embedderUnavailable) return null;
   try {
-    const { FlagEmbedding, EmbeddingModel } = await import("fastembed");
-    embedder = await FlagEmbedding.init({ model: EmbeddingModel.BGESmallENV15, cacheDir: CACHE_DIR });
+    const { env, pipeline } = await import("@huggingface/transformers");
+    env.cacheDir = CACHE_DIR;
+    embedder = await pipeline("feature-extraction", "Xenova/bge-small-en-v1.5");
     return embedder;
   } catch (err) {
     embedderUnavailable = true;
@@ -38,8 +38,8 @@ export async function embed(text: string): Promise<number[] | null> {
   const e = await getEmbedder();
   if (!e) return null;
   try {
-    const vec = await e.queryEmbed(text);
-    return Array.from(vec);
+    const vec = await e(text, { pooling: "mean", normalize: true });
+    return Array.from(vec.data);
   } catch {
     return null;
   }

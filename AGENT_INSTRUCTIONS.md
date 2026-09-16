@@ -32,10 +32,10 @@ Store a memory whenever you:
 - Learn anything about the **project structure, tech stack, or external dependencies** (`type: context`)
 
 **Examples of things that should always be stored:**
-- "Fixed fastembed defaulting to a relative `local_cache/` path — now uses `~/.cache/fastembed`."
+- "Transformers.js embeddings use `~/.cache/transformers` for the local model cache."
 - "User prefers sarcastic tone in responses."
 - "Neo4j connection is configured via env vars, not a .env file."
-- "Embedding model is BAAI/bge-small-en-v1.5, ~33 MB, downloaded once."
+- "Embedding model is Xenova/bge-small-en-v1.5 (based on BAAI/bge-small-en-v1.5), downloaded once."
 - "tsconfig targets ES2022, output goes to dist/."
 
 ---

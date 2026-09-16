@@ -10,7 +10,7 @@ Just Neo4j + local ONNX embeddings + 5 tools.
 ## How it works
 
 Memories are graph nodes. Relationships between them are first-class citizens.  
-Semantic recall uses a local embedding model (`BAAI/bge-small-en-v1.5`, ~33 MB, downloaded once and cached) — no external embedding service required.
+Semantic recall uses a local embedding model (`Xenova/bge-small-en-v1.5`, downloaded once and cached) — no external embedding service required.
 
 ```
 (:Memory { id, content, type, scope, tags, created_at, embedding })
