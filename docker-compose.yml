@@ -1,14 +1,31 @@
 services:
-  neo4j:
+  neo-memory-db:
     image: neo4j:latest
-    container_name: neo-memory
+    container_name: neo-memory-db
+    restart: unless-stopped
     ports:
-      - "7474:7474"   # browser
-      - "7687:7687"   # bolt
+      - "7474:7474" # Nur Web-UI nach außen offen
+    # 7687 (Bolt) ist standardmäßig intern im Docker-Netzwerk erreichbar
     environment:
-      NEO4J_AUTH: neo4j/0oK2mQb0pySP59D409OQdkShZZ7cyAI4
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
     volumes:
-      - neo4j_data:/data
+      - ./neo4j-data:/data
+      - ./neo4j-logs:/logs
 
-volumes:
-  neo4j_data:
+  neo-memory-mcp:
+    image: node:lts
+    container_name: neo-memory-mcp
+    restart: on-failure:3
+    depends_on:
+      - neo-memory-db
+    working_dir: /app
+    volumes:
+      - ./:/app
+    ports:
+      - "3742:3742"
+    environment:
+      HTTP_PORT: 3742
+      NEO4J_URI: bolt://neo-memory-db:7687 # Direkter interner Zugriff via Servicename
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+    command: node dist/index.js
