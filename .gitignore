@@ -2,5 +2,6 @@ node_modules/
 dist/
 .env
 *.js.map
-
 local_cache/
+.github/
+external_docs/

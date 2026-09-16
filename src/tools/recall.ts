@@ -1,13 +1,19 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { runQuery } from "../db.js";
+import neo4j from "neo4j-driver";
+import { driver } from "../db.js";
 import { embed } from "../embedder.js";
+import { config } from "../config.js";
 
 export function registerRecall(server: McpServer): void {
+  const description = config.memory.scope
+    ? `Search memories by semantic similarity in the isolated "${config.memory.scope}" scope. Global and other project memories are excluded.`
+    : "Search memories by semantic similarity. Provide a descriptive query — the agent should " +
+      "describe what it's looking for in natural language. Optionally filter by project scope.";
+
   server.tool(
     "recall",
-    "Search memories by semantic similarity. Provide a descriptive query — the agent should " +
-    "describe what it's looking for in natural language. Optionally filter by project scope.",
+    description,
     {
       query: z
         .string()
@@ -15,7 +21,11 @@ export function registerRecall(server: McpServer): void {
       scope: z
         .string()
         .optional()
-        .describe("Limit results to a project scope. Omit to search all memories including global."),
+        .describe(
+          config.memory.scope
+            ? "Ignored in isolated server mode; results are always limited to the configured scope."
+            : "Limit results to a project scope. Omit to search all memories including global."
+        ),
       limit: z
         .number()
         .int()
@@ -26,51 +36,67 @@ export function registerRecall(server: McpServer): void {
         .describe("Maximum number of memories to return."),
     },
     async ({ query, scope, limit }) => {
-      const queryEmbedding = await embed(query);
-      // KuzuDB requires a WITH clause between YIELD and WHERE — direct WHERE after YIELD is not supported
-      const scopeFilter = scope ? "WITH node, distance WHERE node.scope = $scope OR node.scope = 'global'" : "";
-      const scopeFilterFts = scope ? "WITH node, score WHERE node.scope = $scope OR node.scope = 'global'" : "";
-      let rows: Record<string, any>[];
+      const session = driver.session();
+      try {
+        const queryEmbedding = await embed(query);
+        const activeScope = config.memory.scope ?? scope;
+        const scopeFilter = activeScope
+          ? config.memory.scope
+            ? "WHERE m.scope = $scope"
+            : "WHERE m.scope = $scope OR m.scope = 'global'"
+          : "";
+        const scopeParams = activeScope ? { scope: activeScope } : {};
+        let records;
 
-      if (queryEmbedding) {
-        // Primary path: vector similarity search via HNSW index
-        rows = await runQuery(
-          `CALL QUERY_VECTOR_INDEX('Memory', 'memory_vec', $embedding, $limit)
-           YIELD node, distance
-           ${scopeFilter}
-           RETURN node.id AS id, node.content AS content, node.type AS type,
-                  node.scope AS scope, node.tags AS tags, node.created_at AS created_at,
-                  1.0 - distance AS score
-           ORDER BY score DESC`,
-          { embedding: queryEmbedding, limit, ...(scope ? { scope } : {}) }
-        );
-      } else {
-        // Fallback: full-text BM25 search when embedder is unavailable
-        rows = await runQuery(
-          `CALL QUERY_FTS_INDEX('Memory', 'memory_fts', $query)
-           YIELD node, score
-           ${scopeFilterFts}
-           RETURN node.id AS id, node.content AS content, node.type AS type,
-                  node.scope AS scope, node.tags AS tags, node.created_at AS created_at, score
-           ORDER BY score DESC
-           LIMIT $limit`,
-          { query, limit, ...(scope ? { scope } : {}) }
-        );
+        // Neo4j requires true integers — JS numbers serialize as floats (e.g. 10.0) and
+        // are rejected by LIMIT and queryNodes.
+        const neoLimit      = neo4j.int(limit);
+        // Fetch a larger pre-filter window so scope filtering doesn't shrink results below limit.
+        const neoFetchLimit = neo4j.int(limit * 10);
+
+        if (queryEmbedding) {
+          // Vector similarity — primary path
+          const result = await session.run(
+            `CALL db.index.vector.queryNodes('memory_vector', $fetchLimit, $embedding)
+             YIELD node AS m, score
+             ${scopeFilter}
+             RETURN m.id AS id, m.content AS content, m.type AS type,
+                    m.scope AS scope, m.tags AS tags, m.created_at AS created_at, score
+             ORDER BY score DESC
+             LIMIT $limit`,
+            { embedding: queryEmbedding, fetchLimit: neoFetchLimit, limit: neoLimit, ...scopeParams }
+          );
+          records = result.records;
+        } else {
+          // Full-text fallback
+          const result = await session.run(
+            `CALL db.index.fulltext.queryNodes('memory_fulltext', $query)
+             YIELD node AS m, score
+             ${scopeFilter}
+             RETURN m.id AS id, m.content AS content, m.type AS type,
+                    m.scope AS scope, m.tags AS tags, m.created_at AS created_at, score
+             ORDER BY score DESC LIMIT $limit`,
+            { query, limit: neoLimit, ...scopeParams }
+          );
+          records = result.records;
+        }
+
+        const memories = records.map((r) => ({
+          id:         r.get("id"),
+          content:    r.get("content"),
+          type:       r.get("type"),
+          scope:      r.get("scope"),
+          tags:       r.get("tags"),
+          created_at: r.get("created_at"),
+          score:      r.get("score"),
+        }));
+
+        return {
+          content: [{ type: "text", text: JSON.stringify(memories, null, 2) }],
+        };
+      } finally {
+        await session.close();
       }
-
-      const memories = rows.map((r) => ({
-        id:         r.id,
-        content:    r.content,
-        type:       r.type,
-        scope:      r.scope,
-        tags:       r.tags,
-        created_at: r.created_at,
-        score:      r.score,
-      }));
-
-      return {
-        content: [{ type: "text", text: JSON.stringify(memories, null, 2) }],
-      };
     }
   );
 }

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { bootstrapSchema } from "./db.js";
+import { driver, bootstrapSchema } from "./db.js";
 import { getEmbedder } from "./embedder.js";
 import { registerRemember } from "./tools/remember.js";
 import { registerRecall }   from "./tools/recall.js";
@@ -31,7 +31,7 @@ async function startStdio(): Promise<void> {
 }
 
 /**
- * Starts an HTTP daemon so multiple sessions share one KuzuDB connection.
+ * Starts an HTTP daemon so multiple sessions share one Neo4j connection.
  * Each MCP client gets its own session; all sessions share the same process.
  * Connect clients to: http://localhost:<port>/mcp
  */
@@ -39,6 +39,17 @@ async function startHttp(port: number): Promise<void> {
   const sessions = new Map<string, StreamableHTTPServerTransport>();
 
   const httpServer = http.createServer(async (req, res) => {
+    // CORS: stage early — survives through @hono/node-server
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
+
+    if (req.method === "OPTIONS") {
+      res.setHeader("Access-Control-Allow-Methods", "*");
+      res.setHeader("Access-Control-Allow-Headers", "*");
+      res.writeHead(204).end();
+      return;
+    }
+
     if (req.url !== "/mcp") {
       res.writeHead(404).end("Not found");
       return;
@@ -80,15 +91,21 @@ async function startHttp(port: number): Promise<void> {
     await transport.handleRequest(req, res);
   });
 
-  httpServer.listen(port, "127.0.0.1", () => {
-    console.error(`[neo-memory] HTTP daemon listening on http://127.0.0.1:${port}/mcp (localhost only)`);
-    console.error("[neo-memory] All sessions share one KuzuDB connection — no more lock conflicts.");
+  httpServer.listen(port, "0.0.0.0", () => {
+    console.error(`[neo-memory] HTTP daemon listening on http://0.0.0.0:${port}/mcp`);
+    console.error("[neo-memory] All sessions share one Neo4j connection.");
   });
 }
 
 async function main(): Promise<void> {
-  await bootstrapSchema();
-  console.error("[neo-memory] KuzuDB ready. Schema bootstrapped.");
+  const session = driver.session();
+  try {
+    await session.run("RETURN 1");
+    await bootstrapSchema(session);
+    console.error("[neo-memory] Connected to Neo4j. Schema ready.");
+  } finally {
+    await session.close();
+  }
 
   // Warm up the embedder without blocking startup
   getEmbedder().then((e) => {

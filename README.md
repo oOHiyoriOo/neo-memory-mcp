@@ -1,18 +1,16 @@
 # neo-memory-mcp
 
-Simple KuzuDB-backed memory MCP for coding agents (GitHub Copilot CLI, Claude CLI, etc).
+Simple Neo4j-backed memory MCP for coding agents (GitHub Copilot CLI, Claude CLI, etc).
 
 No cloud. No markdown files. No over-engineering.  
-Just KuzuDB (embedded) + local ONNX embeddings + 5 tools.
+Just Neo4j + local ONNX embeddings + 5 tools.
 
 ---
 
 ## How it works
 
 Memories are graph nodes. Relationships between them are first-class citizens.  
-Semantic recall uses a local embedding model (`BAAI/bge-small-en-v1.5`, ~33 MB, downloaded once and cached to `~/.cache/fastembed`) — no external embedding service required.
-
-The database is an embedded [KuzuDB](https://github.com/kuzudb/kuzu) graph stored in `~/.local/share/neo-memory/db` by default. No server to run, no credentials to manage.
+Semantic recall uses a local embedding model (`Xenova/bge-small-en-v1.5`, downloaded once and cached) — no external embedding service required.
 
 ```
 (:Memory { id, content, type, scope, tags, created_at, embedding })
@@ -27,8 +25,10 @@ The database is an embedded [KuzuDB](https://github.com/kuzudb/kuzu) graph store
 ## Requirements
 
 - **Node.js** 18+
-
-That's it. No database server required.
+- **Neo4j** 5.x — [Desktop](https://neo4j.com/download/) or Docker:
+  ```bash
+  docker run -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/password neo4j:5
+  ```
 
 ---
 
@@ -44,22 +44,29 @@ No credentials needed — the server is local and unauthenticated by design.
 
 ### Environment variables
 
-| Variable        | Default                               | Description                                                    |
-|-----------------|---------------------------------------|----------------------------------------------------------------|
-| `KUZU_DB_PATH`  | `~/.local/share/neo-memory/db`        | Path to the KuzuDB database dir                                |
-| `HTTP_PORT`     | *(unset)*                             | When set, run as HTTP daemon instead of stdio (see below)      |
+| Variable          | Default                  | Description                                                    |
+|-------------------|--------------------------|----------------------------------------------------------------|
+| `NEO4J_URI`       | `bolt://localhost:7687`  | Neo4j Bolt URI                                                 |
+| `NEO4J_USER`      | `neo4j`                  | Neo4j username                                                 |
+| `NEO4J_PASSWORD`  | `password`               | Neo4j password                                                 |
+| `HTTP_PORT`       | *(unset)*                | When set, run as HTTP daemon instead of stdio (see below)      |
+| `NEO_MEMORY_SCOPE`| *(unset)*                | Isolate every memory operation to this project scope           |
 
-> **Override example:** `KUZU_DB_PATH=/data/my-memory npm run dev`
+> **Local dev / testing:** pass them inline — `NEO4J_PASSWORD=secret npm run dev`
+
+When `NEO_MEMORY_SCOPE` is set, recall excludes global and other-project
+memories, remember always writes to that scope, and graph operations cannot
+cross its boundary. Leave it unset to retain the normal project-plus-global
+recall behavior.
 
 ---
 
 ## Multi-session / HTTP daemon mode
 
-KuzuDB is an embedded database — only **one process** can hold it open at a time.  
-If you run multiple sessions (e.g. Claude `/resume`, Copilot + Claude in parallel), each spawns its own stdio process and the second one **fails to open the DB**.
+If you run multiple sessions (e.g. Claude `/resume`, Copilot + Claude in parallel), each spawns its own stdio process. Running as an HTTP daemon lets all sessions share one process.
 
 **Fix: run the server as a background HTTP daemon.**  
-One process owns KuzuDB; every session connects to it over HTTP.
+One process owns the Neo4j connection; every session connects to it over HTTP.
 
 ### 1. Start the daemon (once, at login or via a service)
 
@@ -77,6 +84,9 @@ After=network.target
 [Service]
 ExecStart=/full/path/to/node /path/to/neo-memory-mcp/dist/index.js
 Environment=HTTP_PORT=3742
+Environment=NEO4J_URI=bolt://localhost:7687
+Environment=NEO4J_USER=neo4j
+Environment=NEO4J_PASSWORD=password
 Restart=on-failure
 RestartSec=3
 
@@ -91,6 +101,8 @@ WantedBy=default.target
 systemctl --user daemon-reload
 systemctl --user enable --now neo-memory
 ```
+
+> **Note:** Use the full path to `node` (e.g. `which node`) — bare `node` may not resolve correctly with nvm/fnm.
 
 ### 2. Point your MCP clients at the daemon
 
@@ -124,31 +136,25 @@ systemctl --user enable --now neo-memory
 
 ## Wiring into your agent (stdio — single session only)
 
-> ⚠️ **Stdio and the HTTP daemon are mutually exclusive.** KuzuDB allows only one process to hold the database lock. If the daemon is running, stdio will fail to start. Stop the daemon first (`systemctl --user stop neo-memory`) before switching back to stdio mode.
+> ℹ️ **HTTP daemon mode is optional.** Use it when you want multiple clients to share one long-lived Neo4j-backed MCP process; otherwise stdio mode is fine for a single session.
 
 If you only ever run one session at a time, the simpler stdio mode works fine — no daemon needed.
 
+> **Note:** stdio and HTTP daemon mode are mutually exclusive — set `HTTP_PORT` only when running as a daemon.
+
 ### Claude Desktop (`claude_desktop_config.json`)
 
-**Linux / macOS**
 ```json
 {
   "mcpServers": {
     "neo-memory": {
       "command": "npx",
-      "args": ["tsx", "/path/to/neo-memory-mcp/src/index.ts"]
-    }
-  }
-}
-```
-
-**Windows** — `npx` must be the full path (cmd/PowerShell don't resolve it otherwise):
-```json
-{
-  "mcpServers": {
-    "neo-memory": {
-      "command": "C:\\Program Files\\nodejs\\npx.cmd",
-      "args": ["tsx", "C:\\path\\to\\neo-memory-mcp\\src\\index.ts"]
+      "args": ["tsx", "/path/to/neo-memory-mcp/src/index.ts"],
+      "env": {
+        "NEO4J_URI": "bolt://localhost:7687",
+        "NEO4J_USER": "neo4j",
+        "NEO4J_PASSWORD": "password"
+      }
     }
   }
 }
@@ -156,33 +162,22 @@ If you only ever run one session at a time, the simpler stdio mode works fine �
 
 ### GitHub Copilot CLI (`.vscode/mcp.json`)
 
-**Linux / macOS**
 ```json
 {
   "servers": {
     "neo-memory": {
       "type": "stdio",
       "command": "npx",
-      "args": ["tsx", "/path/to/neo-memory-mcp/src/index.ts"]
+      "args": ["tsx", "/path/to/neo-memory-mcp/src/index.ts"],
+      "env": {
+        "NEO4J_URI": "bolt://localhost:7687",
+        "NEO4J_USER": "neo4j",
+        "NEO4J_PASSWORD": "password"
+      }
     }
   }
 }
 ```
-
-**Windows**
-```json
-{
-  "servers": {
-    "neo-memory": {
-      "type": "stdio",
-      "command": "C:\\Program Files\\nodejs\\npx.cmd",
-      "args": ["tsx", "C:\\path\\to\\neo-memory-mcp\\src\\index.ts"]
-    }
-  }
-}
-```
-
-> **Tip:** find your npx path on Windows with `where npx` in a terminal.
 
 ### Agent instructions
 
@@ -207,7 +202,7 @@ Store a new memory.
 | Param     | Type       | Required | Description |
 |-----------|------------|----------|-------------|
 | `content` | `string`   | ✅       | The memory content |
-| `type`    | `enum`     | —        | `decision` \| `pattern` \| `preference` \| `solution` \| `context` \| `entity` |
+| `type`    | `enum`     | —        | `decision` \| `pattern` \| `preference` \| `issue` \| `solution` \| `task` \| `context` \| `entity` |
 | `scope`   | `string`   | —        | Project name or `"global"` (default) |
 | `tags`    | `string[]` | —        | Keywords to aid recall |
 
@@ -263,6 +258,8 @@ Traverse the graph outward from a memory node. Returns all connected nodes and e
 | `decision`   | Architectural / design choices and their rationale |
 | `pattern`    | Coding conventions and patterns to follow |
 | `preference` | User preferences (tools, style, workflow) |
-| `solution`   | Non-obvious fixes or workarounds worth remembering |
+| `issue`      | Known bugs, gotchas, pain points |
+| `solution`   | How a past issue was resolved |
+| `task`       | Ongoing / pending work across sessions |
 | `context`    | General project background |
 | `entity`     | Person, team, technology, external system |

@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { runQuery } from "../db.js";
+import { driver } from "../db.js";
+import { config } from "../config.js";
 
 export function registerConnect(server: McpServer): void {
   server.tool(
@@ -13,31 +14,40 @@ export function registerConnect(server: McpServer): void {
       relation: z.string().describe("Relationship label, e.g. 'caused', 'solved_by', 'depends_on'."),
     },
     async ({ from_id, to_id, relation }) => {
-      // Verify both nodes exist before creating the relationship
-      const check = await runQuery(
-        `MATCH (a:Memory {id: $from_id}), (b:Memory {id: $to_id}) RETURN a.id AS aid, b.id AS bid`,
-        { from_id, to_id }
-      );
+      const session = driver.session();
+      const scope = config.memory.scope;
+      const memoryPattern = scope ? ", scope: $scope" : "";
+      try {
+        const result = await session.run(
+          `MATCH (a:Memory {id: $from_id${memoryPattern}}), (b:Memory {id: $to_id${memoryPattern}})
+           CREATE (a)-[r:RELATES_TO {relation: $relation, created_at: $created_at}]->(b)
+           RETURN a.id AS from, b.id AS to, r.relation AS relation`,
+          {
+            from_id,
+            to_id,
+            relation,
+            created_at: new Date().toISOString(),
+            ...(scope ? { scope } : {})
+          }
+        );
 
-      if (check.length === 0) {
+        if (result.records.length === 0) {
+          return {
+            content: [{ type: "text", text: "Error: one or both memory IDs not found." }],
+            isError: true,
+          };
+        }
+
+        const r = result.records[0];
         return {
-          content: [{ type: "text", text: "Error: one or both memory IDs not found." }],
-          isError: true,
+          content: [{
+            type: "text",
+            text: JSON.stringify({ from: r.get("from"), relation: r.get("relation"), to: r.get("to") }),
+          }],
         };
+      } finally {
+        await session.close();
       }
-
-      await runQuery(
-        `MATCH (a:Memory {id: $from_id}), (b:Memory {id: $to_id})
-         CREATE (a)-[:RELATES_TO {relation: $relation, created_at: $created_at}]->(b)`,
-        { from_id, to_id, relation, created_at: new Date().toISOString() }
-      );
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({ from: from_id, relation, to: to_id }),
-        }],
-      };
     }
   );
 }
