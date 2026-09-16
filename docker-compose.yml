@@ -11,13 +11,20 @@ services:
     volumes:
       - ./neo4j-data:/data
       - ./neo4j-logs:/logs
+    healthcheck:
+      test: [ "CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD}", "RETURN 1" ]
+      start_period: 2m
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   neo-memory-mcp:
     image: node:lts
     container_name: neo-memory-mcp
     restart: on-failure:3
     depends_on:
-      - neo-memory-db
+      neo-memory-db:
+        condition: service_healthy
     working_dir: /app
     volumes:
       - ./:/app
